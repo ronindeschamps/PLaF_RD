@@ -1,6 +1,9 @@
 open Parser_plaf.Ast
 open Parser_plaf.Parser
 open Ds
+
+
+
     
 (** [eval_expr e] evaluates expression [e] *)
 let rec eval_expr : expr -> exp_val ea_result =
@@ -62,21 +65,75 @@ let rec eval_expr : expr -> exp_val ea_result =
     eval_expr e >>=
     pair_of_pairVal >>= fun (_,r) ->
     return r
+  | Unpair(id1, id2, e1, e2) ->
+    eval_expr e1 >>=
+    pair_of_pairVal >>= fun(l,r) ->
+    extend_env id1 l >>+
+    extend_env id2 r >>+
+    eval_expr e2
+  | IsEmpty(e) ->
+    eval_expr e >>=
+    tree_of_treeVal >>= fun t ->
+    return (BoolVal (t = Empty))
+  | EmptyTree(_t) ->
+    return (TreeVal Empty)
+  | Node (e1, e2, e3) ->
+    eval_expr e1 >>= fun ev1 ->
+    eval_expr e2 >>= tree_of_treeVal >>= fun ev2 ->
+    eval_expr e3 >>= tree_of_treeVal >>= fun ev3 ->
+    return (TreeVal (Node (ev1, ev2, ev3)))
+
+  | CaseT(e1, e2 , id1 , id2 , id3 , e3) ->
+    eval_expr e1 >>= tree_of_treeVal >>= (function
+    | Empty -> eval_expr e2
+    | Node(d, l, r) -> 
+      extend_env id1 d >>+
+      extend_env id2 (TreeVal l) >>+
+      extend_env id3 (TreeVal r) >>+
+      eval_expr e3)
+
+  | Record(fs) ->
+      (match fs with 
+      | [] -> return (RecordVal [])
+      | (id, (_, int))::t -> 
+        if (id_check id t) then
+        eval_expr int >>= fun intv ->
+        eval_expr (Record t) >>= fun recordv ->
+        match recordv with
+        | RecordVal evs -> return (RecordVal ((id, intv)::evs))
+        | _ -> failwith "Expected a RecordVal"
+        else error "Duplicate field name in record"
+        )
+
+  | Proj(record, id) ->
+    eval_expr record >>= record_of_recordVal >>= fun r ->
+    get_id id r
+
   | Debug(_e) ->
     string_of_env >>= fun str ->
     print_endline str; 
     error "Debug called"
   | _ -> failwith "Not implemented yet!"
 
+  and eval_exprs : expr list -> (exp_val list) ea_result =
+    fun es -> 
+    match es with
+    | [] -> return []
+    | h::t -> eval_expr h >>= fun i ->
+      eval_exprs t >>= fun l ->
+      return (i::l)
+
 (** [eval_prog e] evaluates program [e] *)
 let eval_prog (AProg(_,e)) =
   eval_expr e
-
-
+  
 (** [interp s] parses [s] and then evaluates it *)
 let interp (e:string) : exp_val result =
   let c = e |> parse |> eval_prog
   in run c
+
+  
+    
   
 
 
