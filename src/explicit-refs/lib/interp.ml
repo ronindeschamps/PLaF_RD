@@ -4,6 +4,7 @@ open Parser_plaf.Parser
     
 let g_store = Store.empty_store 20 (NumVal 0)
 
+
 let rec eval_expr : expr -> exp_val ea_result = fun e ->
   match e with
   | Int(n) -> return @@ NumVal n
@@ -92,12 +93,27 @@ let rec eval_expr : expr -> exp_val ea_result = fun e ->
     sequence (List.map eval_expr es) >>= fun l ->
     return (List.hd (List.rev l))
   | Unit -> return UnitVal
+  | IsNumber(e) ->
+    eval_expr e >>= fun ev ->
+      (match ev with
+      | NumVal _ -> return (BoolVal true)
+      | _ -> return (BoolVal false))
+  (*  
+  | Record(fs) -> 
+    sequence (List.map process_field fs) >>= fun evs -> 
+      return (RecordVal (addIds fs evs))
+*)
   | Debug(_e) ->
     string_of_env >>= fun str_env ->
     let str_store = Store.string_of_store string_of_expval g_store 
     in (print_endline (str_env^"\n"^str_store);
     error "Reached breakpoint")
   | _ -> failwith ("Not implemented: "^string_of_expr e)
+and process_field (_id,(is_mutable, e)) =
+  eval_expr e >>= fun ev ->
+  if is_mutable
+  then return (RefVal (Store.new_ref g_store ev))
+  else return ev
 
 let eval_prog (AProg(_,e)) =
   eval_expr e         
